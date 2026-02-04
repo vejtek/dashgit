@@ -1,3 +1,68 @@
+.DS_Store
+.vscode/
+.idea/
+.cache/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+/.pnp/
+
+# Vite / Build outputs
+/dist/
+/.vite/
+/.vercel/
+build/
+out/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# Environment variables
+.env
+.env.*
+.env.local
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Tauri / Rust
+/src-tauri/target/
+/target/
+**/target/
+**/*.rs.bk
+
+# Tauri bundler output
+src-tauri/target/**/bundle/
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Icon?
+
+# Editor swap files
+*~
+*.swp
+*.swo
+
+# Generated lock files - keep if you want reproducible installs
+# package-lock.json
+# pnpm-lock.yaml
+# yarn.lock
+
+# Optional: local debug or generated artifacts
+.cache/
+.eslintcache
+.turbo/
 # Logs
 logs
 *.log
