@@ -1,73 +1,80 @@
-# React + TypeScript + Vite
+DashGit Dashboard
+=================
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Overview
+--------
+This project is a small, single-purpose, wibecoded dashboard that aggregates open Pull Requests (GitHub) and Merge Requests (GitLab) where the user is involved (author, assignee, or reviewer). It is intentionally lightweight and focused on that single purpose.
 
-Currently, two official plugins are available:
+Quick features
+--------------
+- Fetches PRs/MRs the current user is involved with (author/assignee/reviewer)
+- Shows review states, approvals and pipeline status
+- Stores settings locally (development build uses `localStorage` by default)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+Prerequisites
+-------------
+- Node.js (recommended v18+)
+- npm
+- If building for desktop (Tauri): Rust toolchain and `@tauri-apps/cli` (see Tauri docs)
 
-## React Compiler
+Development
+-----------
+Install dependencies:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Run the dev server (hot reload):
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm run dev
 ```
+
+Build
+------------------
+This runs TypeScript build checks and produces a Vite production build of the frontend:
+
+```bash
+npm run build
+```
+
+Preview the production build locally:
+
+```bash
+npm run preview
+```
+
+Tauri / Desktop
+----------------
+This repository includes a `src-tauri` directory. To build a Tauri desktop app you will need the Rust toolchain and Tauri CLI. Typical steps (after installing Rust and Tauri prerequisites) are:
+
+```bash
+# build the frontend first
+npm run build
+# then build the Tauri app (example)
+# (adjust for your platform; this requires @tauri-apps/cli)
+npx tauri build
+```
+
+Notes about secrets
+-------------------
+- The app stores user tokens in `localStorage` under key `dashgit-settings` in the current implementation. For production/desktop apps consider using OS-secure storage (keychain) or Tauri's secure storage plugins.
+- If you add tokens during development, do not commit them into the repo. Rotate any tokens accidentally exposed.
+
+Recommendations
+---------------
+- Move tokens out of `localStorage` to secure storage before shipping.
+- Add secret-scanning in CI (git-secrets, truffleHog, or GitHub secret scanning).
+- Limit the scopes of Personal Access Tokens (PATs) used with GitHub/GitLab.
+
+Where to look
+-------------
+- Main UI and app logic: `src/App.tsx`
+- Adapters for APIs: `src/adapters/github.ts` and `src/adapters/gitlab.ts`
+- Types: `src/types.ts`
+- Tauri desktop glue: `src-tauri/`
+
+License & authorship
+--------------------
+This repository is a minimal, single-purpose project (wibecoded). Use and modify as you like.
