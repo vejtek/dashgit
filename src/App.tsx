@@ -1,453 +1,357 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { open } from '@tauri-apps/plugin-shell';
+import { useState, useEffect, useMemo } from 'react';
 import { 
+  Clock, 
   CheckCircle2, 
   XCircle, 
   AlertCircle, 
-  ChevronDown, 
+  FileText, 
+  Github, 
+  Gitlab, 
   ChevronRight, 
+  ChevronDown, 
   MessageSquare,
-  GitPullRequest,
-  RefreshCw,
   Settings,
-  FileText,
-  Clock,
-  Github,
-  Gitlab,
-  Save,
+  RefreshCw,
+  Check,
+  X,
   Loader2
 } from 'lucide-react';
-
-// Import shared types and adapters
-import type { UnifiedPullRequest, User, PipelineStatus, RepoSource } from './types';
-import { fetchGithubPRs } from './adapters/github';
+import type { UnifiedPullRequest, ReviewState, PipelineStatus } from './types';
 import { fetchGitlabMRs } from './adapters/gitlab';
+import { fetchGithubPRs } from './adapters/github';
 
-// --- 1. SETTINGS COMPONENT ---
+// --- Components ---
 
-interface AppSettings {
-  githubToken: string;
-  githubUsername: string;
-  gitlabToken: string;
-  gitlabHost: string;
-  gitlabUsername: string;
-}
-
-const DEFAULT_SETTINGS: AppSettings = {
-  githubToken: '',
-  githubUsername: '',
-  gitlabToken: '',
-  gitlabHost: 'https://gitlab.com',
-  gitlabUsername: ''
+// 1. Tiny Status Icon for Reviewers (BOTTOM LEFT)
+const StatusBadge = ({ status }: { status: ReviewState }) => {
+  const baseClasses = "absolute -bottom-1 -left-1 rounded-full p-0.5 border border-white dark:border-gray-800 z-10";
+  
+  switch (status) {
+    case 'approved':
+      return (
+        <div className={`${baseClasses} bg-green-500`} title="Approved">
+          <Check size={8} className="text-white" strokeWidth={4} />
+        </div>
+      );
+    case 'changes_requested':
+      return (
+        <div className={`${baseClasses} bg-red-500`} title="Changes Requested">
+          <X size={8} className="text-white" strokeWidth={4} />
+        </div>
+      );
+    case 'commented':
+      return (
+        <div className={`${baseClasses} bg-blue-500`} title="Commented">
+          <MessageSquare size={8} className="text-white" fill="currentColor" strokeWidth={0} />
+        </div>
+      );
+    default:
+      return null;
+  }
 };
 
-const SettingsModal = ({ 
-  isOpen, 
-  onClose, 
-  settings, 
-  onSave 
-}: { 
-  isOpen: boolean; 
-  onClose: () => void; 
-  settings: AppSettings; 
-  onSave: (s: AppSettings) => void; 
-}) => {
-  const [formData, setFormData] = useState(settings);
-
-  useEffect(() => {
-    if (isOpen) setFormData(settings);
-  }, [isOpen, settings]);
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-200 dark:border-gray-700">
-        <div className="p-4 border-b border-gray-100 dark:border-gray-700 flex justify-between items-center">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-white flex items-center gap-2">
-            <Settings className="w-5 h-5" /> API Configuration
-          </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
-            <XCircle className="w-6 h-6" />
-          </button>
-        </div>
-        
-        <div className="p-6 space-y-6">
-          {/* GitHub Section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-              <Github className="w-4 h-4" /> GitHub
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Personal Access Token (Classic)</label>
-              <input 
-                type="password" 
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="ghp_..."
-                value={formData.githubToken}
-                onChange={e => setFormData({...formData, githubToken: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Username</label>
-              <input 
-                type="text" 
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="octocat"
-                value={formData.githubUsername}
-                onChange={e => setFormData({...formData, githubUsername: e.target.value})}
-              />
-            </div>
-          </div>
-
-          <hr className="border-gray-100 dark:border-gray-700" />
-
-          {/* GitLab Section */}
-          <div className="space-y-3">
-            <div className="flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wider">
-              <Gitlab className="w-4 h-4" /> GitLab
-            </div>
-             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">GitLab Host URL</label>
-              <input 
-                type="text" 
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="https://gitlab.com"
-                value={formData.gitlabHost}
-                onChange={e => setFormData({...formData, gitlabHost: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Personal Access Token</label>
-              <input 
-                type="password" 
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="glpat-..."
-                value={formData.gitlabToken}
-                onChange={e => setFormData({...formData, gitlabToken: e.target.value})}
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Username</label>
-              <input 
-                type="text" 
-                className="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded px-3 py-2 text-sm text-gray-800 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="jdoe"
-                value={formData.gitlabUsername}
-                onChange={e => setFormData({...formData, gitlabUsername: e.target.value})}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="p-4 bg-gray-50 dark:bg-gray-800/50 border-t border-gray-100 dark:border-gray-700 flex justify-end">
-          <button 
-            onClick={() => onSave(formData)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            <Save className="w-4 h-4" /> Save Configuration
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+// 2. Pipeline Icon Logic
+const PipelineIcon = ({ status }: { status: PipelineStatus }) => {
+  switch (status) {
+    case 'success': 
+      return <CheckCircle2 size={18} className="text-green-500" />;
+    case 'failed': 
+      return <XCircle size={18} className="text-red-500" />;
+    case 'warning': 
+      return <AlertCircle size={18} className="text-yellow-500" />;
+    case 'pending': 
+      return <Loader2 size={18} className="text-blue-500 animate-spin" />;
+    default: 
+      return <div className="w-4 h-4 rounded-full border-2 border-gray-300" />;
+  }
 };
 
-// --- 2. HELPER COMPONENTS ---
-
-function getRelativeTime(date: Date) {
+// 3. Formatted Relative Time
+const RelativeTime = ({ date }: { date: Date }) => {
   const now = new Date();
-  const diffMs = now.getTime() - date.getTime();
-  const diffHours = diffMs / (1000 * 60 * 60);
-  const diffDays = diffHours / 24;
-
-  let text = "";
-  let colorClass = "";
+  const diffHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+  
+  let label = '';
+  let color = '';
 
   if (diffHours < 1) {
-    text = `${Math.floor(diffMs / (1000 * 60))}m`;
-    colorClass = "text-green-600 dark:text-green-400";
+    label = `${Math.floor(diffHours * 60)}m`;
+    color = 'text-green-600 dark:text-green-400';
   } else if (diffHours < 24) {
-    text = `${Math.floor(diffHours)}h`;
-    colorClass = "text-green-600 dark:text-green-400";
-  } else if (diffDays < 7) {
-    text = `${Math.floor(diffDays)}d`;
-    colorClass = "text-yellow-600 dark:text-yellow-400";
+    label = `${Math.floor(diffHours)}h`;
+    color = 'text-green-600 dark:text-green-400';
+  } else if (diffHours < 168) { 
+    label = `${Math.floor(diffHours / 24)}d`;
+    color = 'text-yellow-600 dark:text-yellow-400';
   } else {
-    text = `${Math.floor(diffDays)}d`;
-    colorClass = "text-red-600 dark:text-red-400";
+    label = diffHours > 720 ? `${Math.floor(diffHours / 720)}M` : `${Math.floor(diffHours / 24)}d`;
+    color = 'text-red-600 dark:text-red-400';
   }
-  return { text, colorClass };
-}
 
-const SourceIcon = ({ source }: { source: RepoSource }) => {
-  if (source === 'gitlab') return <Gitlab className="w-4 h-4 text-orange-600" />;
-  return <Github className="w-4 h-4 text-gray-900 dark:text-gray-100" />;
+  return <span className={`font-mono font-medium ${color}`}>{label}</span>;
 };
 
-const StatusIcon = ({ status }: { status: PipelineStatus }) => {
-  switch (status) {
-    case 'success': return <CheckCircle2 className="w-5 h-5 text-green-500" />;
-    case 'failed': return <XCircle className="w-5 h-5 text-red-500" />;
-    case 'warning': return <AlertCircle className="w-5 h-5 text-orange-500" />;
-    default: return <div className="w-4 h-4 rounded-full border-2 border-gray-300 border-t-blue-500 animate-spin" />;
-  }
-};
-
-const Avatar = ({ user }: { user: User }) => (
-  <div className="relative group/avatar cursor-help">
-    <img 
-      src={user.avatarUrl} 
-      alt={user.name} 
-      className="rounded-full border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-800 object-cover w-8 h-8" 
-    />
-    <span className="absolute z-20 bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover/avatar:block bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 text-xs px-2 py-1 rounded whitespace-nowrap shadow-lg">
-      {user.name}
-    </span>
-  </div>
-);
-
-const Section = ({ title, count, children }: { title: string, count: number, children: React.ReactNode }) => {
-  const [isOpen, setIsOpen] = useState(count > 0);
-
-  return (
-    <div className="mb-4 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm bg-white dark:bg-gray-800 overflow-hidden">
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
-      >
-        <div className="flex items-center gap-2 font-semibold text-gray-700 dark:text-gray-200">
-          {isOpen ? <ChevronDown className="w-5 h-5" /> : <ChevronRight className="w-5 h-5" />}
-          {title}
-        </div>
-        <span className="bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-xs font-bold px-2 py-1 rounded-full">{count}</span>
-      </button>
-      
-      {isOpen && (
-        <div className="overflow-x-auto">
-          {count === 0 ? (
-            <div className="p-4 text-center text-gray-400 dark:text-gray-500 text-sm italic">
-              No requests in this category.
-            </div>
-          ) : (
-            <table className="w-full text-sm text-left text-gray-600 dark:text-gray-300">
-              <thead className="bg-gray-50 dark:bg-gray-900/50 text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
-                <tr>
-                  <th className="p-3 w-12 text-center">
-                     <div className="group/head-tooltip relative flex justify-center">
-                        <Clock className="w-4 h-4" />
-                        <span className="absolute top-full mt-1 hidden group-hover/head-tooltip:block bg-gray-800 text-white text-xs px-2 py-1 rounded z-10">Last Update</span>
-                     </div>
-                  </th>
-                  <th className="p-3 w-10 text-center">CI</th>
-                  <th className="p-3">Title / Repo</th>
-                  <th className="p-3 w-32">Size</th>
-                  <th className="p-3 w-16 text-center">Author</th>
-                  <th className="p-3">Reviewers</th>
-                  <th className="p-3">Comments</th>
-                  <th className="p-3">Approvals</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                {children}
-              </tbody>
-            </table>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
-
+// 4. Row Component
 const PRRow = ({ pr }: { pr: UnifiedPullRequest }) => {
-  const timeData = getRelativeTime(pr.updatedAt);
-  
+  const reviewersWithoutAuthor = pr.reviewers.filter(r => r.username !== pr.author.username);
+
   return (
-    <tr className="hover:bg-blue-50 dark:hover:bg-gray-700/50 transition-colors group">
-      <td className={`p-3 text-center font-bold ${timeData.colorClass}`}>
-        <div className="cursor-help" title={`Last update: ${pr.updatedAt.toLocaleString()}`}>
-          {timeData.text}
-        </div>
+    <tr className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+      {/* Last Update */}
+      <td className="p-2 text-center whitespace-nowrap">
+        <RelativeTime date={pr.updatedAt} />
       </td>
-      <td className="p-3 text-center">
+
+      {/* Pipeline Status */}
+      <td className="p-2 text-center">
         <div className="flex justify-center">
-          <StatusIcon status={pr.pipelineStatus} />
+          <PipelineIcon status={pr.pipelineStatus} />
         </div>
       </td>
-      <td className="p-3">
-        <div className="flex items-start gap-2">
-           <div className="mt-0.5"><SourceIcon source={pr.source} /></div>
-           <div className="flex flex-col">
-              <a href={pr.url} target="_blank" rel="noreferrer" className="font-medium text-blue-600 dark:text-blue-400 hover:underline block truncate max-w-md">
-                {pr.title} <span className="text-gray-400 dark:text-gray-500 font-normal">#{pr.id}</span>
-              </a>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex items-center gap-1">
-                <GitPullRequest className="w-3 h-3" />
-                {pr.repoName}
-              </div>
-           </div>
+
+      {/* Title / Repo */}
+      <td className="p-2">
+        <div className="flex flex-col">
+          <a 
+            href={pr.url} 
+            target="_blank" 
+            rel="noreferrer" 
+            onClick={async (e) => {
+              // Check if running in Tauri
+              if ((window as any).__TAURI_INTERNALS__) {
+                e.preventDefault(); // Stop the app from navigating internally
+                await open(pr.url); // Ask macOS to open the link
+              }
+              // If not in Tauri (web mode), let the standard target="_blank" work
+            }}
+            className="text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 hover:underline truncate max-w-lg"
+          >
+            {pr.title} <span className="text-gray-400 font-normal">#{pr.id}</span>
+          </a>
+          <div className="flex items-center gap-1 mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {pr.source === 'github' ? <Github size={12} /> : <Gitlab size={12} className="text-orange-600" />}
+            <span>{pr.repoName}</span>
+          </div>
         </div>
       </td>
-      <td className="p-3">
+
+      {/* Size */}
+      <td className="p-2 whitespace-nowrap">
         <div className="flex flex-col text-xs">
           <div className="flex items-center gap-1 text-gray-500 dark:text-gray-400">
-             <FileText className="w-3 h-3" />
-             {pr.changes.files} files
+            <FileText size={12} /> {pr.changes.files}
           </div>
           <div className="font-mono">
-             <span className="text-green-600 dark:text-green-400">+{pr.changes.additions}</span>
-             <span className="text-gray-400 mx-1">/</span>
-             <span className="text-red-600 dark:text-red-400">-{pr.changes.deletions}</span>
+            <span className="text-green-600">+{pr.changes.additions}</span>
+            <span className="text-gray-400 mx-1">/</span>
+            <span className="text-red-600">-{pr.changes.deletions}</span>
           </div>
         </div>
       </td>
-      <td className="p-3 text-center">
-         <div className="flex justify-center">
-            <Avatar user={pr.author} />
-         </div>
-      </td>
-      <td className="p-3">
-        <div className="flex -space-x-2 overflow-visible">
-          {pr.reviewers.length === 0 ? <span className="text-gray-400 dark:text-gray-600 text-xs">-</span> : 
-            pr.reviewers.map((r, i) => (
-            <div key={i} className="relative z-0 hover:z-10 transition-transform hover:scale-110">
-              <Avatar user={r} />
-            </div>
-          ))}
+
+      {/* Author */}
+      <td className="p-2 text-center">
+        <div className="flex justify-center group relative">
+          <img src={pr.author.avatarUrl} alt="" className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 object-cover" />
+          <span className="absolute bottom-full mb-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded z-10 whitespace-nowrap">
+            {pr.author.name}
+          </span>
         </div>
       </td>
-      <td className="p-3">
-        {pr.commentStats.total === 0 ? (
-          <span className="text-gray-400 dark:text-gray-600 text-xs">-</span>
-        ) : pr.commentStats.resolved === pr.commentStats.total ? (
-           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
-             All resolved
-           </span>
-        ) : (
-          <span className="inline-flex items-center gap-1 text-gray-600 dark:text-gray-300 text-xs">
-            <MessageSquare className="w-3 h-3" />
-            {pr.commentStats.resolved}/{pr.commentStats.total}
-          </span>
-        )}
+
+      {/* Reviewers */}
+      <td className="p-2">
+        <div className="flex -space-x-2 overflow-visible pl-1">
+          {reviewersWithoutAuthor.length === 0 ? <span className="text-gray-400 text-xs">-</span> : 
+            reviewersWithoutAuthor.map((r, i) => (
+              <div key={i} className="group relative transition-transform hover:z-20 hover:scale-105">
+                <div className="relative inline-block">
+                  <img src={r.avatarUrl} alt="" className="w-8 h-8 rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 object-cover" />
+                  <StatusBadge status={r.status} />
+                </div>
+                <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-gray-800 text-white text-xs px-2 py-1 rounded z-30 whitespace-nowrap">
+                  {r.name} ({r.status.replace('_', ' ')})
+                </span>
+              </div>
+            ))
+          }
+        </div>
       </td>
-      <td className="p-3">
-         <div className="flex items-center gap-1 text-xs">
-           <span className={`font-bold ${pr.approvals.given >= pr.approvals.required ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}`}>
+
+      {/* Comments (RESTORED ICON) */}
+      <td className="p-2 text-xs whitespace-nowrap">
+        <div className="flex items-center gap-1.5">
+          <MessageSquare size={14} className="text-gray-400" />
+          {pr.commentStats.total === 0 ? <span className="text-gray-400">-</span> : 
+           pr.commentStats.resolved === pr.commentStats.total ? (
+             <span className="text-green-600 font-medium dark:text-green-400">All resolved</span>
+           ) : (
+             <span className="text-gray-600 dark:text-gray-300">
+               {pr.commentStats.resolved} / {pr.commentStats.total}
+             </span>
+           )}
+        </div>
+      </td>
+
+      {/* Approvals */}
+      <td className="p-2 text-center">
+         <div className="text-xs font-mono bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded inline-block">
+           <span className={pr.approvals.given >= pr.approvals.required ? 'text-green-600 font-bold' : 'text-orange-600 font-bold'}>
              {pr.approvals.given}
            </span>
            <span className="text-gray-400">/</span>
-           <span className="text-gray-500">{pr.approvals.required}</span>
+           <span>{pr.approvals.required}</span>
          </div>
       </td>
     </tr>
   );
 };
 
-// --- 3. MAIN APP ---
+// 5. Section Container
+const Section = ({ title, prs }: { title: string, prs: UnifiedPullRequest[] }) => {
+  // FIX: Initialize open if items exist
+  const [isOpen, setIsOpen] = useState(prs.length > 0);
 
-function App() {
-  const [settings, setSettings] = useState<AppSettings>(() => {
-    const saved = localStorage.getItem('dashgit-settings');
-    return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
-  });
-  
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  // Sync state if data changes (e.g. on refresh)
+  useEffect(() => {
+    if (prs.length > 0) setIsOpen(true);
+    else setIsOpen(false);
+  }, [prs.length]);
+
+  return (
+    <div className="mb-3 bg-white dark:bg-gray-900 rounded-lg shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 hover:bg-gray-100 dark:hover:bg-gray-750 transition-colors"
+      >
+        <div className="flex items-center gap-2 font-bold text-gray-800 dark:text-gray-200">
+          {isOpen ? <ChevronDown size={20} /> : <ChevronRight size={20} />}
+          {title}
+        </div>
+        <span className="text-sm font-bold bg-gray-200 dark:bg-gray-700 px-2.5 py-0.5 rounded-full text-gray-700 dark:text-gray-300">
+          {prs.length}
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead className="bg-white dark:bg-gray-900 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
+              <tr>
+                <th className="p-2 w-16 text-center group cursor-help relative">
+                  <div className="flex justify-center"><Clock size={16} /></div>
+                  <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-gray-800 text-white px-2 py-1 rounded normal-case z-20">Last Update</span>
+                </th>
+                    <th className="p-2 w-16 text-center">Status</th>
+                    <th className="p-2">Title / Repo</th>
+                    <th className="p-2 w-24">Size</th>
+                    <th className="p-2 w-16 text-center">Author</th>
+                    <th className="p-2">Reviewers</th>
+                    <th className="p-2 w-24">Comments</th>
+                    <th className="p-2 w-20 text-center">Approvals</th>
+              </tr>
+            </thead>
+            <tbody>
+              {prs.length === 0 ? (
+                <tr>
+                      <td colSpan={9} className="p-4 text-center text-gray-400 italic">No requests in this section.</td>
+                </tr>
+              ) : (
+                prs.map(pr => <PRRow key={pr.uniqueKey} pr={pr} />)
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Main App ---
+
+export default function App() {
   const [data, setData] = useState<UnifiedPullRequest[]>([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settings, setSettings] = useState({
+    gitlabHost: 'https://gitlab.com',
+    gitlabToken: '',
+    githubToken: '',
+    githubUsername: ''
+  });
 
-  // Persistence for settings
-  const handleSaveSettings = (newSettings: AppSettings) => {
+  useEffect(() => {
+    const saved = localStorage.getItem('dashgit-settings');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setSettings(parsed);
+      fetchData(parsed);
+    } else setIsSettingsOpen(true);
+  }, []);
+
+  const handleSave = (newSettings: any) => {
     setSettings(newSettings);
     localStorage.setItem('dashgit-settings', JSON.stringify(newSettings));
     setIsSettingsOpen(false);
-    fetchData(newSettings); // Refresh immediately
+    fetchData(newSettings);
   };
 
-  const fetchData = async (currentSettings: AppSettings = settings) => {
+  const fetchData = async (cfg = settings) => {
     setLoading(true);
-    setError(null);
-    setData([]);
+    const promises = [];
+    if (cfg.gitlabToken) promises.push(fetchGitlabMRs(cfg.gitlabHost, cfg.gitlabToken));
+    if (cfg.githubToken) promises.push(fetchGithubPRs(cfg.githubToken, cfg.githubUsername));
 
     try {
-      const promises = [];
-      
-      // Conditionally fetch GitHub
-      if (currentSettings.githubToken && currentSettings.githubUsername) {
-        promises.push(fetchGithubPRs(currentSettings.githubToken, currentSettings.githubUsername)
-          .catch(e => { console.error(e); throw new Error(`GitHub: ${e.message}`); }));
-      }
-
-      // Conditionally fetch GitLab
-      if (currentSettings.gitlabToken && currentSettings.gitlabUsername) {
-        promises.push(fetchGitlabMRs(currentSettings.gitlabHost, currentSettings.gitlabToken, currentSettings.gitlabUsername)
-          .catch(e => { console.error(e); throw new Error(`GitLab: ${e.message}`); }));
-      }
-
-      if (promises.length === 0) {
-        setLoading(false);
-        return; // No tokens configured
-      }
-
-      const results = await Promise.all(promises);
-      const combined = results.flat().sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
-      
-      setData(combined);
-    } catch (err: any) {
-      setError(err.message || 'Failed to fetch data');
+      const res = await Promise.all(promises);
+      setData(res.flat().sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()));
+    } catch (e) {
+      console.error(e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial fetch
-  useEffect(() => {
-    if (settings.githubToken || settings.gitlabToken) {
-      fetchData();
-    } else {
-      setIsSettingsOpen(true); // Open settings if no tokens found
-    }
-  }, []);
-
-  // Categorize Logic
   const sections = useMemo(() => {
     const buckets = {
       returned: [] as UnifiedPullRequest[],
       reviewRequested: [] as UnifiedPullRequest[],
-      yourPRs: [] as UnifiedPullRequest[],
+      yourMergeRequests: [] as UnifiedPullRequest[],
+      waitingForAuthor: [] as UnifiedPullRequest[],
       waitingForApprovals: [] as UnifiedPullRequest[],
       approvedByYou: [] as UnifiedPullRequest[],
       approvedByOthers: [] as UnifiedPullRequest[],
     };
 
     data.forEach(pr => {
-      // Logic 1: Returned (Failed CI or Changes Requested)
-      if (pr.isAuthor && (pr.overallReviewState === 'changes_requested' || pr.pipelineStatus === 'failed')) {
+      if (pr.isAuthor && (pr.pipelineStatus === 'failed' || pr.overallReviewState === 'changes_requested')) {
         buckets.returned.push(pr);
         return;
       }
-      // Logic 2: Review Requested (I am reviewer + pending)
-      if (pr.isReviewer && pr.myReviewState === 'pending') {
-        buckets.reviewRequested.push(pr);
-        return;
-      }
-      // Logic 5: Approved by you
-      if (pr.isReviewer && pr.myReviewState === 'approved') {
-        buckets.approvedByYou.push(pr);
-        return;
-      }
-      // Logic 6: Approved by others (I am author + approved)
       if (pr.isAuthor && pr.overallReviewState === 'approved') {
         buckets.approvedByOthers.push(pr);
         return;
       }
-      // Logic 4: Waiting for approvals (I am author + pending approval)
       if (pr.isAuthor && pr.approvals.given < pr.approvals.required) {
         buckets.waitingForApprovals.push(pr);
         return;
       }
-      // Logic 3: Default for my PRs
       if (pr.isAuthor) {
-        buckets.yourPRs.push(pr);
+        buckets.yourMergeRequests.push(pr);
+        return;
+      }
+      if (pr.isReviewer && pr.myReviewState === 'approved') {
+        buckets.approvedByYou.push(pr);
+        return;
+      }
+      if (pr.isReviewer && (pr.myReviewState === 'changes_requested' || pr.myReviewState === 'commented')) {
+        buckets.waitingForAuthor.push(pr);
+        return;
+      }
+      if (pr.isReviewer && pr.myReviewState === 'pending') {
+        buckets.reviewRequested.push(pr);
+        return;
       }
     });
 
@@ -455,99 +359,76 @@ function App() {
   }, [data]);
 
   return (
-    <div className="min-h-screen w-full bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-sans p-6 transition-colors duration-200 flex justify-center">
-      <div className="max-w-7xl mx-auto w-full">
-        
-        {/* Header */}
-        <header className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-800 dark:text-white">DashGit</h1>
+    <div className="min-h-screen bg-gray-50 dark:bg-black text-gray-900 dark:text-gray-100 p-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex items-center mb-2">
+          <div className="ml-auto flex gap-2">
+            <button onClick={() => fetchData()} disabled={loading} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800">
+              <RefreshCw size={20} className={loading ? 'animate-spin' : ''} />
+            </button>
+            <button onClick={() => setIsSettingsOpen(true)} className="p-1 rounded-full hover:bg-gray-200 dark:hover:bg-gray-800">
+              <Settings size={20} />
+            </button>
           </div>
-          <div className="flex gap-3">
-             <button 
-               onClick={() => fetchData()} 
-               className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-               disabled={loading}
-             >
-               <RefreshCw className={`w-5 h-5 ${loading ? 'animate-spin' : ''}`} />
-             </button>
-             <button 
-               onClick={() => setIsSettingsOpen(true)}
-               className="p-2 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-full transition-colors"
-             >
-               <Settings className="w-5 h-5" />
-             </button>
-          </div>
-        </header>
+        </div>
 
-        {/* Error Banner */}
-        {error && (
-          <div className="mb-6 p-4 bg-red-100 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-300 flex items-center gap-3">
-            <XCircle className="w-5 h-5 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
+        <Section title="Returned to you" prs={sections.returned} />
+        <Section title="Review requested" prs={sections.reviewRequested} />
+        <Section title="Your merge requests" prs={sections.yourMergeRequests} />
+        <Section title="Waiting for the author or assignee" prs={sections.waitingForAuthor} />
+        <Section title="Waiting for approvals" prs={sections.waitingForApprovals} />
+        <Section title="Approved by you" prs={sections.approvedByYou} />
+        <Section title="Approved by others" prs={sections.approvedByOthers} />
 
-        {/* Empty State / Welcome */}
-        {!loading && data.length === 0 && !error && (
-           <div className="text-center py-20 bg-white dark:bg-gray-800 rounded-xl border border-dashed border-gray-300 dark:border-gray-700">
-             <Settings className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-             <h3 className="text-lg font-medium text-gray-600 dark:text-gray-300">No data found</h3>
-             <p className="text-gray-400 text-sm mt-1">Configure your API tokens in settings to get started.</p>
-             <button 
-               onClick={() => setIsSettingsOpen(true)}
-               className="mt-4 text-blue-600 hover:underline text-sm font-medium"
-             >
-               Open Settings
-             </button>
-           </div>
-        )}
+        {isSettingsOpen && (
+          <div onClick={() => setIsSettingsOpen(false)} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 p-4 rounded-lg w-full max-w-md border dark:border-gray-800">
+              <h2 className="text-xl font-bold mb-4">Configuration</h2>
+              <div className="space-y-4">
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Gitlab size={16} className="text-orange-600" />
+                    <h3 className="text-sm font-semibold">GitLab</h3>
+                  </div>
+                  <input 
+                    type="text" placeholder="GitLab Host" 
+                    className="w-full p-2 border rounded dark:bg-gray-800 dark:border-gray-700"
+                    value={settings.gitlabHost} onChange={e => setSettings({...settings, gitlabHost: e.target.value})}
+                  />
+                  <input 
+                    type="password" placeholder="GitLab Token" 
+                    className="w-full p-2 mt-2 border rounded dark:bg-gray-800 dark:border-gray-700"
+                    value={settings.gitlabToken} onChange={e => setSettings({...settings, gitlabToken: e.target.value})}
+                  />
+                </div>
 
-        {/* Loading State */}
-        {loading && data.length === 0 && (
-           <div className="flex justify-center py-20">
-             <Loader2 className="w-10 h-10 text-blue-500 animate-spin" />
-           </div>
-        )}
+                <hr className="dark:border-gray-700" />
 
-        {/* Main Content */}
-        {!loading && data.length > 0 && (
-          <div className="space-y-2">
-            <Section title="Returned to you" count={sections.returned.length}>
-              {sections.returned.map(pr => <PRRow key={pr.id + pr.source} pr={pr} />)}
-            </Section>
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Github size={16} />
+                    <h3 className="text-sm font-semibold">GitHub</h3>
+                  </div>
+                  <input 
+                    type="text" placeholder="GitHub Username" 
+                    className="w-full p-2 border rounded dark:bg-gray-800 dark:border-gray-700"
+                    value={settings.githubUsername} onChange={e => setSettings({...settings, githubUsername: e.target.value})}
+                  />
+                  <input 
+                    type="password" placeholder="GitHub Token" 
+                    className="w-full p-2 mt-2 border rounded dark:bg-gray-800 dark:border-gray-700"
+                    value={settings.githubToken} onChange={e => setSettings({...settings, githubToken: e.target.value})}
+                  />
+                </div>
 
-            <Section title="Review requested" count={sections.reviewRequested.length}>
-              {sections.reviewRequested.map(pr => <PRRow key={pr.id + pr.source} pr={pr} />)}
-            </Section>
-
-            <Section title="Your merge requests" count={sections.yourPRs.length}>
-              {sections.yourPRs.map(pr => <PRRow key={pr.id + pr.source} pr={pr} />)}
-            </Section>
-
-            <Section title="Waiting for approvals" count={sections.waitingForApprovals.length}>
-              {sections.waitingForApprovals.map(pr => <PRRow key={pr.id + pr.source} pr={pr} />)}
-            </Section>
-
-            <Section title="Approved by you" count={sections.approvedByYou.length}>
-              {sections.approvedByYou.map(pr => <PRRow key={pr.id + pr.source} pr={pr} />)}
-            </Section>
-
-            <Section title="Approved by others" count={sections.approvedByOthers.length}>
-              {sections.approvedByOthers.map(pr => <PRRow key={pr.id + pr.source} pr={pr} />)}
-            </Section>
+                <button onClick={() => handleSave(settings)} className="w-full bg-blue-600 text-white py-1 rounded font-bold hover:bg-blue-700">
+                  Save
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
-
-      <SettingsModal 
-        isOpen={isSettingsOpen} 
-        onClose={() => setIsSettingsOpen(false)} 
-        settings={settings}
-        onSave={handleSaveSettings}
-      />
     </div>
   );
 }
-
-export default App;
