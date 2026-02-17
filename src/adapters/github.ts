@@ -39,6 +39,11 @@ export const fetchGithubPRs = async (token: string, username: string): Promise<U
                 author { login avatarUrl }
               }
             }
+            reviewThreads(first: 50) {
+              nodes {
+                isResolved
+              }
+            }
             commits(last: 1) {
               nodes {
                 commit {
@@ -88,6 +93,7 @@ function mapGithubToUnified(pr: any, currentUsername: string): UnifiedPullReques
   const reviewNodes = (pr.reviews?.nodes || []).filter(Boolean);
   const commentNodes = (pr.comments?.nodes || []).filter(Boolean);
 
+  // 2. Replay review history to find the LATEST state per user
   reviewNodes.sort((a: any, b: any) => new Date(a.submittedAt).getTime() - new Date(b.submittedAt).getTime());
 
   const latestStateByLogin = new Map<string, 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | null>();
@@ -202,6 +208,13 @@ function mapGithubToUnified(pr: any, currentUsername: string): UnifiedPullReques
     else if (approvers.size > 0 && pr.reviewDecision === 'APPROVED') overallReviewState = 'approved';
   }
 
+  // 8. Calculate Comment & Thread Stats
+  const reviewThreads = pr.reviewThreads?.nodes || [];
+  const resolvedThreadsCount = reviewThreads.filter((t: any) => t.isResolved).length;
+  
+  // General comments can't be resolved, so we treat them as non-blocking/resolved automatically.
+  const generalCommentsCount = pr.totalCommentsCount || 0;
+
   return {
     id: pr.number.toString(),
     uniqueKey: `${pr.repository.owner.login}/${pr.repository.name}#${pr.number}`,
@@ -218,8 +231,8 @@ function mapGithubToUnified(pr: any, currentUsername: string): UnifiedPullReques
     reviewers,
     pipelineStatus,
     commentStats: {
-      total: pr.totalCommentsCount,
-      resolved: 0, 
+      total: reviewThreads.length + generalCommentsCount,
+      resolved: resolvedThreadsCount + generalCommentsCount, 
     },
     approvals: {
       given: approvers.size,
